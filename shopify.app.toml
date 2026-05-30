@@ -3,7 +3,7 @@
 client_id = "9811a05d8fbdb0db6adad7edf72cf504"
 application_url = "https://example.com"
 embedded = true
-name = "price-roll"
+name = "Price Roll"
 
 [access_scopes]
 # Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
