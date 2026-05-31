@@ -26,7 +26,7 @@ export default function Campaigns() {
 
       {hasCampaigns ? (
         <s-section heading="All campaigns" padding="none">
-          <CampaignsTable campaigns={campaigns} />
+          <CampaignsTable campaigns={campaigns} pageSize={5} />
         </s-section>
       ) : (
         <s-section>

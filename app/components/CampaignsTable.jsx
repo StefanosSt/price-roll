@@ -6,12 +6,16 @@ import { useNavigate } from "react-router";
  * Reusable campaigns table. Used on the home page (recent campaigns) and the
  * Campaigns tab (all campaigns). Includes an inline status filter and per-row
  * edit / replay actions that navigate to the campaign edit route.
+ *
+ * Pass `pageSize` to enable the table's built-in pagination (used on the
+ * Campaigns tab); omit it to render every matching row (used on the home page).
  */
-export function CampaignsTable({ campaigns }) {
+export function CampaignsTable({ campaigns, pageSize }) {
   const navigate = useNavigate();
   const [status, setStatus] = useState("all");
+  const [page, setPage] = useState(1);
 
-  const rows = useMemo(
+  const filtered = useMemo(
     () =>
       campaigns.filter(
         (campaign) =>
@@ -20,15 +24,49 @@ export function CampaignsTable({ campaigns }) {
     [campaigns, status],
   );
 
+  const paginated = Boolean(pageSize);
+  const totalPages = paginated
+    ? Math.max(1, Math.ceil(filtered.length / pageSize))
+    : 1;
+  // Clamp in case the active page no longer exists after filtering.
+  const safePage = Math.min(page, totalPages);
+  const rows = paginated
+    ? filtered.slice((safePage - 1) * pageSize, safePage * pageSize)
+    : filtered;
+
+  // Reset to the first page whenever the status filter changes, otherwise the
+  // current page could fall outside the newly filtered result set.
+  const handleStatusChange = (event) => {
+    setStatus(event.currentTarget.value);
+    setPage(1);
+  };
+
+  const goPrevious = () => setPage((current) => Math.max(1, current - 1));
+  const goNext = () => setPage((current) => Math.min(totalPages, current + 1));
+
+  // Wire up <s-table>'s built-in pagination only when a page size is provided.
+  // Boolean attributes are spread in conditionally so that, on React 18, a
+  // `false` value is never rendered as a (truthy) string attribute.
+  const paginationProps = paginated
+    ? {
+        paginate: true,
+        ...(safePage > 1 ? { hasPreviousPage: true } : {}),
+        ...(safePage < totalPages ? { hasNextPage: true } : {}),
+        onPreviousPage: goPrevious,
+        onNextPage: goNext,
+        paginationLabel: `Page ${safePage} of ${totalPages}`,
+      }
+    : {};
+
   return (
-    <s-table>
+    <s-table {...paginationProps}>
       <s-select
         slot="filters"
         label="Status"
         labelAccessibilityVisibility="exclusive"
         name="status"
         value={status}
-        onChange={(event) => setStatus(event.currentTarget.value)}
+        onChange={handleStatusChange}
       >
         <s-option value="all">All statuses</s-option>
         <s-option value="active">Active</s-option>
