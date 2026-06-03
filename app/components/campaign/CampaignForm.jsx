@@ -5,8 +5,7 @@ import {
   readValue,
   readChoice,
 } from "../../lib/campaign";
-import { ConditionBuilder } from "./ConditionBuilder";
-import { ResourcePickerField } from "./ResourcePickerField";
+import { TargetingSection } from "./TargetingSection";
 
 /**
  * The editable left column of the campaign editor. Stateless: every value and
@@ -14,14 +13,7 @@ import { ResourcePickerField } from "./ResourcePickerField";
  * same component powers both the New and Edit routes.
  */
 export function CampaignForm({ form }) {
-  const {
-    campaign,
-    update,
-    toggle,
-    addCondition,
-    removeCondition,
-    updateCondition,
-  } = form;
+  const { campaign, update, toggle } = form;
   const { discountType } = campaign;
 
   return (
@@ -40,81 +32,7 @@ export function CampaignForm({ form }) {
       </s-section>
 
       {/* ── Which products ─────────────────────────────────────────── */}
-      <s-section heading="Which products?">
-        <s-stack direction="block" gap="large">
-          <s-checkbox
-            label="All products"
-            name="allProducts"
-            checked={campaign.allProducts || undefined}
-            onChange={() => toggle("allProducts")}
-          ></s-checkbox>
-
-          {!campaign.allProducts && (
-            <s-stack direction="block" gap="large">
-              <s-stack direction="block" gap="small">
-                <s-heading>Collections</s-heading>
-                <ResourcePickerField
-                  type="collection"
-                  buttonText="Add collections"
-                  selected={campaign.collections}
-                  onChange={(resources) => update("collections", resources)}
-                />
-              </s-stack>
-
-              <s-stack direction="block" gap="small">
-                <s-heading>Products / variants</s-heading>
-                <ResourcePickerField
-                  type="product"
-                  buttonText="Add products / variants"
-                  selected={campaign.products}
-                  onChange={(resources) => update("products", resources)}
-                />
-              </s-stack>
-
-              <s-stack direction="block" gap="small">
-                <s-heading>Match by condition (optional)</s-heading>
-                <s-paragraph>
-                  Refine the selection above with rules like tags or vendor. If
-                  no collections or products are selected, these conditions apply
-                  to your entire store catalog.
-                </s-paragraph>
-                <ConditionBuilder
-                  conditionMode={campaign.conditionMode}
-                  conditions={campaign.conditions}
-                  onModeChange={(value) => update("conditionMode", value)}
-                  onAdd={addCondition}
-                  onRemove={removeCondition}
-                  onUpdate={updateCondition}
-                />
-              </s-stack>
-            </s-stack>
-          )}
-
-          <s-divider></s-divider>
-
-          <s-stack direction="block" gap="base">
-            <s-heading>Which products to exclude?</s-heading>
-            <s-paragraph>
-              Products with type &quot;Gift Card&quot; are automatically excluded.
-            </s-paragraph>
-            <s-checkbox
-              label="None"
-              name="excludeNone"
-              checked={campaign.excludeNone || undefined}
-              onChange={() => toggle("excludeNone")}
-            ></s-checkbox>
-
-            {!campaign.excludeNone && (
-              <ResourcePickerField
-                type="product"
-                buttonText="Add products / variants to exclude"
-                selected={campaign.excludedProducts}
-                onChange={(resources) => update("excludedProducts", resources)}
-              />
-            )}
-          </s-stack>
-        </s-stack>
-      </s-section>
+      <TargetingSection form={form} />
 
       {/* ── Discount value (mirrors the wizard's Pricing section) ───── */}
       <s-section heading="Discount value">

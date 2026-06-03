@@ -14,6 +14,21 @@ export const DISCOUNT_TYPES = [
   { value: "fixed", label: "Fixed sale price" },
 ];
 
+// Targeting is two mutually-exclusive modes. "rules" is a dynamic query (all
+// products or specific collections, optionally refined by conditions) that also
+// catches future matches; "products" is a static, hand-picked set where
+// conditions don't apply because the merchant already enumerated everything.
+export const TARGET_MODES = [
+  { value: "rules", label: "By rules" },
+  { value: "products", label: "Specific products" },
+];
+
+// The scope sub-choice shown only in "rules" mode.
+export const SCOPE_OPTIONS = [
+  { value: "all", label: "All products" },
+  { value: "collections", label: "Specific collections" },
+];
+
 // Each attribute declares its operators and which value editor renders for it.
 // `collection` and `specific products` are intentionally absent — those are
 // handled by the dedicated resource pickers above the condition builder.
@@ -99,12 +114,13 @@ export function createEmptyCampaign(overrides = {}) {
   return {
     title: "",
 
-    // Which products — resource-picker selections + optional matching rules
-    allProducts: false,
-    collections: [], // selected via the collection resource picker
-    products: [], // selected via the product / variant resource picker
-    conditionMode: "any", // "any" (OR) | "all" (AND)
-    conditions: [createCondition()],
+    // Which products — two mutually-exclusive targeting modes (see TARGET_MODES).
+    targetMode: "rules", // "rules" | "products"
+    scope: "all", // "all" | "collections" — rules mode only
+    collections: [], // selected via the collection resource picker (rules + collections)
+    products: [], // selected via the product / variant resource picker (products mode)
+    conditionMode: "any", // "any" (OR) | "all" (AND) — rules mode only
+    conditions: [createCondition()], // rules mode only
     excludeNone: true,
     excludedProducts: [], // selected via the product / variant resource picker
 
@@ -193,6 +209,64 @@ export function resourceSubtitle(resource) {
   return resource.productType ?? "";
 }
 
+// ── Backend bridge ───────────────────────────────────────────────────────────
+// `serializeTargeting` is the single projection from form state into the
+// declarative rule object the backend stores as `Campaign.targeting` (JSON).
+// Keeping it pure here means the future loader/action just serializes — and the
+// stored shape mirrors the form, so integration stays "easy". GIDs are the
+// durable key; display snapshots stay in the React layer (or are re-fetched).
+
+/** A condition row minus its UI-only `id`, keeping only the editor that applies. */
+function serializeCondition(condition) {
+  const base = {
+    attribute: condition.attribute,
+    operator: condition.operator,
+  };
+  if (attributeMeta(condition.attribute).editor === "tags") {
+    return { ...base, values: condition.values, tagMode: condition.tagMode };
+  }
+  return { ...base, value: condition.value };
+}
+
+/** Exclusions as a small tagged union: none, or a list of product/variant GIDs. */
+function serializeExclusions(campaign) {
+  if (campaign.excludeNone || !campaign.excludedProducts.length) {
+    return { mode: "none", productGids: [] };
+  }
+  return {
+    mode: "products",
+    productGids: campaign.excludedProducts.map((r) => r.id),
+  };
+}
+
+/**
+ * Projects the campaign's targeting state into the rule object persisted as
+ * `Campaign.targeting`. A resolver later expands this into the materialized
+ * `CampaignVariant` set both modes share.
+ */
+export function serializeTargeting(campaign) {
+  if (campaign.targetMode === "products") {
+    return {
+      mode: "products",
+      productGids: campaign.products.map((r) => r.id),
+      exclusions: serializeExclusions(campaign),
+    };
+  }
+  return {
+    mode: "rules",
+    scope: campaign.scope, // "all" | "collections"
+    collectionGids:
+      campaign.scope === "collections"
+        ? campaign.collections.map((r) => r.id)
+        : [],
+    conditionMode: campaign.conditionMode,
+    conditions: campaign.conditions
+      .filter(conditionHasValue)
+      .map(serializeCondition),
+    exclusions: serializeExclusions(campaign),
+  };
+}
+
 // ── Projections (drive the summary sidebar) ──────────────────────────────────
 
 /** Human-readable start of the active window ("Immediately" when not scheduled). */
@@ -249,29 +323,34 @@ export function describeDiscount(campaign) {
 export function summarizeCampaign(campaign) {
   const details = [];
 
-  // Scope
-  if (campaign.allProducts) {
-    details.push("Applies to all products");
+  // Scope — explicit list vs. dynamic rule.
+  if (campaign.targetMode === "products") {
+    details.push(
+      campaign.products.length
+        ? plural(campaign.products.length, "product / variant")
+        : "No products selected yet",
+    );
   } else {
-    const picked = campaign.collections.length + campaign.products.length;
-    if (campaign.collections.length) {
-      details.push(plural(campaign.collections.length, "collection"));
-    }
-    if (campaign.products.length) {
-      details.push(plural(campaign.products.length, "product / variant"));
+    // Rules mode: an "all" / "collections" base, optionally refined by conditions.
+    const onCollections = campaign.scope === "collections";
+    if (onCollections) {
+      details.push(
+        campaign.collections.length
+          ? plural(campaign.collections.length, "collection")
+          : "No collections selected yet",
+      );
+    } else {
+      details.push("Applies to all products");
     }
     const matched = campaign.conditions.filter(conditionHasValue).length;
     if (matched) {
       const mode = campaign.conditionMode === "all" ? "all" : "any";
-      // With nothing picked, conditions run against the whole store.
+      // With no collections picked, conditions run against the whole store.
       details.push(
-        picked
+        onCollections
           ? `Refined by ${mode} of ${plural(matched, "condition")}`
-          : `All store products matching ${mode} of ${plural(matched, "condition")}`,
+          : `Matching ${mode} of ${plural(matched, "condition")}`,
       );
-    }
-    if (!picked && !matched) {
-      details.push("No products selected yet");
     }
   }
   details.push(
