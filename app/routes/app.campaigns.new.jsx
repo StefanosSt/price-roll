@@ -1,7 +1,6 @@
-import { useNavigate } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
-import { CampaignForm } from "../components/CampaignForm";
+import { CampaignPage } from "../components/campaign/CampaignPage";
 
 export const loader = async ({ request }) => {
   await authenticate.admin(request);
@@ -9,20 +8,7 @@ export const loader = async ({ request }) => {
 };
 
 export default function NewCampaign() {
-  const navigate = useNavigate();
-
-  return (
-    <s-page heading="Create campaign">
-      <s-button slot="primary-action" variant="primary">
-        Save
-      </s-button>
-      <s-button slot="secondary-actions" onClick={() => navigate("/app/campaigns")}>
-        Discard
-      </s-button>
-
-      <CampaignForm />
-    </s-page>
-  );
+  return <CampaignPage mode="new" />;
 }
 
 export const headers = (headersArgs) => {

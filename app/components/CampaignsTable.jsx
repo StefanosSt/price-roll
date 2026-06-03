@@ -1,6 +1,7 @@
 /* eslint-disable react/prop-types */
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router";
+import { campaignStatusTone } from "../lib/campaign";
 
 /**
  * Reusable campaigns table. Used on the home page (recent campaigns) and the
@@ -87,7 +88,7 @@ export function CampaignsTable({ campaigns, pageSize }) {
           <s-table-row key={campaign.id}>
             <s-table-cell>{campaign.name}</s-table-cell>
             <s-table-cell>
-              <s-badge tone={campaign.tone}>{campaign.status}</s-badge>
+              <s-badge tone={campaignStatusTone(campaign.status)}>{campaign.status}</s-badge>
             </s-table-cell>
             <s-table-cell>{campaign.dateRange}</s-table-cell>
             <s-table-cell>{campaign.collections}</s-table-cell>
