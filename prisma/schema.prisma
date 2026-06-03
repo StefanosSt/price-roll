@@ -1,14 +1,15 @@
 // This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
+// learn more about it in the docs: https://prisma.io/docs/concepts/components/prisma-schema
 
 generator client {
   provider = "prisma-client-js"
 }
 
-// Note that some adapters may set a maximum length for the String type by default, please ensure your strings are long
-// enough when changing adapters.
-// See https://www.prisma.io/docs/orm/reference/prisma-schema-reference#string for more information
 datasource db {
+  // Currently SQLite for local dev. To use Supabase, switch to:
+  //   provider = "postgresql"
+  //   url      = env("DATABASE_URL")   // your Supabase connection string
+  // The models below compile on both providers.
   provider = "sqlite"
   url      = "file:dev.sqlite"
 }
@@ -31,4 +32,99 @@ model Session {
   emailVerified Boolean?  @default(false)
   refreshToken        String?
   refreshTokenExpires DateTime?
+}
+
+// ===========================================================================
+// Price history (multi-tenant)
+//
+// Mirrors supabase/migrations/0001_price_history.sql, which is the SOURCE OF
+// TRUTH for production. Prisma can't express native partitioning or row-level
+// security, so on Postgres those are applied by that SQL migration — Prisma
+// just sees plain tables. These models give the app a typed client + local dev.
+//
+// TENANCY: every row is scoped to a Store. Money is stored as integer MINOR
+// UNITS (cents) — exact and tiny in the billion-row log. The currency and its
+// decimal count live on the Store (Shopify reports currency on Shop, not the
+// variant).
+// ===========================================================================
+
+model Store {
+  id               BigInt        @id @default(autoincrement())
+  shopDomain       String        @unique // my-store.myshopify.com
+  shopifyGid       String? // gid://shopify/Shop/123
+  name             String?
+  currencyCode     String        @default("USD") // ISO 4217, from Shop.currencyCode
+  currencyExponent Int           @default(2) // minor-unit decimals (EUR=2, JPY=0, BHD=3)
+  status           String        @default("active") // active | uninstalled
+  installedAt      DateTime      @default(now())
+  uninstalledAt    DateTime?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+  products         Product[]
+  variants         Variant[]
+  priceChanges     PriceChange[]
+
+  @@map("stores")
+}
+
+model Product {
+  id               BigInt    @id @default(autoincrement())
+  storeId          BigInt
+  store            Store     @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  shopifyProductId BigInt // numeric id from the webhook payload
+  gid              String? // gid://shopify/Product/123
+  title            String?
+  handle           String?
+  status           String? // active | draft | archived
+  variants         Variant[]
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@unique([storeId, shopifyProductId])
+  @@index([storeId])
+  @@map("products")
+}
+
+model Variant {
+  id                    BigInt        @id @default(autoincrement())
+  storeId               BigInt
+  store                 Store         @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  productId             BigInt?
+  product               Product?      @relation(fields: [productId], references: [id], onDelete: Cascade)
+  shopifyVariantId      BigInt // numeric id from the webhook payload
+  gid                   String? // gid://shopify/ProductVariant/123
+  title                 String? // "Large / Red"
+  sku                   String?
+  barcode               String?
+  position              Int?
+  currentPrice          BigInt? // minor units (cents)
+  currentCompareAtPrice BigInt?
+  shopifyUpdatedAt      DateTime? // updated_at as reported by Shopify
+  priceChanges          PriceChange[]
+  firstSeenAt           DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
+
+  @@unique([storeId, shopifyVariantId])
+  @@index([storeId])
+  @@index([productId])
+  @@map("variants")
+}
+
+// Append-only log. On Postgres this table is RANGE-partitioned monthly by
+// changedAt (PK there is composite (id, changedAt)); that is managed by the SQL
+// migration, not Prisma. Here it's a plain table so local SQLite dev works.
+model PriceChange {
+  id             BigInt   @id @default(autoincrement())
+  storeId        BigInt
+  store          Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  variantId      BigInt
+  variant        Variant  @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  price          BigInt? // minor units
+  compareAtPrice BigInt?
+  source         String   @default("webhook") // webhook | app | manual | bulk | import | backfill
+  changedAt      DateTime @default(now())
+
+  @@index([storeId, variantId, changedAt])
+  @@index([storeId, changedAt])
+  @@map("price_changes")
 }
